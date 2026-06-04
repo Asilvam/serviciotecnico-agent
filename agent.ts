@@ -165,8 +165,8 @@ function printTicket(data: PrintTicketSocketPayload): void {
 
 
 socket.on('print_ticket', (data: PrintTicketSocketPayload) => {
-  if (!data || data.type !== 'service_order_ticket') {
-    logger.warn('Ignored event with invalid payload type.');
+  if (!data || !data.content) {
+    logger.warn('Ignored event with empty or invalid payload content.');
     return;
   }
   printTicket(data);
