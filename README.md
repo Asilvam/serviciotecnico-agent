@@ -13,6 +13,11 @@ Agente Node.js que escucha eventos de una API via **Socket.IO** e imprime ticket
 - Emite `print_success` al servidor al finalizar.
 - Registra toda la actividad en logs rotativos diarios.
 
+### Flujo oficial de disparo
+
+- La API emite `print_ticket` cuando recibe una solicitud manual a `POST /service-orders/:id/print-80mm`.
+- El alta de una orden (`POST /service-orders`) no debe disparar impresión automática.
+
 ---
 
 ## Requisitos
@@ -136,4 +141,3 @@ serviciotecnico-agent/
 ## Licencia
 
 ISC
-
