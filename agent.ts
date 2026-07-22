@@ -1,4 +1,5 @@
 // agent.ts
+import 'dotenv/config';
 import { io, Socket } from 'socket.io-client';
 import * as winston from 'winston';
 import 'winston-daily-rotate-file';
@@ -64,8 +65,13 @@ interface PrintSuccessEventPayload {
   printedAt?: string;
 }
 
+type LogLevel = 'error' | 'warn' | 'info' | 'http' | 'verbose' | 'debug' | 'silly';
+
+const LOG_LEVEL: LogLevel =
+  (process.env.LOG_LEVEL as LogLevel | undefined) ?? 'info';
+
 const logger = winston.createLogger({
-  level: 'info',
+  level: LOG_LEVEL,
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.printf(({ timestamp, level, message }) => `${timestamp} [${level.toUpperCase()}]: ${message}`),
@@ -88,7 +94,7 @@ const socket: Socket = io(SERVER_URL, {
 });
 
 socket.on('connect', () => logger.info(`Connected to API. socketId=${socket.id}`));
-socket.on('disconnect', (reason) => logger.warn(`Disconnected: ${reason}`));
+socket.on('disconnect', (reason) => logger.info(`Disconnected: ${reason}`));
 socket.on('connect_error', (err) => logger.error(`Socket connect error: ${err.message}`));
 
 function emitSuccess(orderId: string): void {
@@ -116,7 +122,7 @@ function printTicket(data: PrintTicketSocketPayload): void {
 
       const trackingUrl = data.tracking?.url;
       if (!trackingUrl) {
-        logger.warn('No tracking.url in payload. Printing text only.');
+        logger.debug('No tracking.url in payload. Printing text only.');
         printer
           .feed(2)
           .cut()
@@ -137,7 +143,7 @@ function printTicket(data: PrintTicketSocketPayload): void {
           if (qrErr) {
             logger.error(`QR print error: ${qrErr.message}`);
           } else {
-            logger.info('QR printed.');
+            logger.debug('QR printed.');
           }
 
           // Regresa a izquierda para el resto del ticket
@@ -166,7 +172,7 @@ function printTicket(data: PrintTicketSocketPayload): void {
 
 socket.on('print_ticket', (data: PrintTicketSocketPayload) => {
   if (!data || !data.content) {
-    logger.warn('Ignored event with empty or invalid payload content.');
+    logger.debug('Ignored event with empty or invalid payload content.');
     return;
   }
   printTicket(data);

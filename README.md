@@ -38,19 +38,33 @@ npm install
 
 ## Configuración
 
-Las variables de entorno se pueden definir en un archivo `.env` (no incluido en el repo):
+1. Copia `.env.example` a `.env`.
+2. Ajusta los valores según tu entorno.
+
+```bash
+cp .env.example .env
+```
+
+Variables disponibles:
 
 | Variable       | Por defecto              | Descripción                        |
 |----------------|--------------------------|------------------------------------|
 | `SERVER_URL`   | `http://localhost:3500`  | URL de la API con Socket.IO        |
 | `PRINT_TOKEN`  | `tu_token_seguro`        | Token de autenticación del agente  |
+| `LOG_LEVEL`    | `info`                   | Nivel de logs (`error`,`warn`,`info`,`debug`) |
 
 Ejemplo de `.env`:
 
 ```env
 SERVER_URL=https://tu-api.herokuapp.com
 PRINT_TOKEN=mi_token_super_secreto
+LOG_LEVEL=info
 ```
+
+### Logs recomendados
+
+- En produccion: `LOG_LEVEL=info` para ver conexion, inicio de impresion, resultados y errores.
+- En diagnostico: `LOG_LEVEL=debug` para incluir eventos detallados (QR opcional, payload invalido, etc.).
 
 ---
 
@@ -73,13 +87,12 @@ npm run start
 
 ```json
 {
-  "type": "service_order_ticket",
   "orderId": "abc123",
   "orderNumber": "OT-0042",
   "mimeType": "text/plain",
   "content": "Texto del ticket...",
-  "width": 32,
-  "paperWidthMm": 58,
+  "width": 40,
+  "paperWidthMm": 80,
   "generatedAt": "2026-04-10T12:00:00.000Z",
   "tracking": {
     "url": "https://tu-dominio.com/tracking/abc123",
