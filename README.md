@@ -37,6 +37,12 @@ trabajo; `PRINT_PROFILE` en la API solo se usa cuando la solicitud lo omite.
 
 ## Instalación y configuración
 
+Para instalar en un PC Windows sin Node.js, descarga el paquete portable
+`serviciotecnico-agent-windows-x64` desde Releases o desde el workflow
+**Build Windows portable agent** y sigue [INSTALL.md](INSTALL.md).
+
+Para desarrollar o ejecutar desde el código fuente:
+
 ```bash
 npm install
 cp .env.example .env
