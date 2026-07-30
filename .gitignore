@@ -11,6 +11,7 @@ logs/
 # Environment variables
 .env
 .env.*
+!.env.example
 
 # IDE
 .idea/
@@ -18,4 +19,3 @@ logs/
 
 # OS
 .DS_Store
-
