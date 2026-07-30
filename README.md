@@ -1,155 +1,159 @@
-# 🖨️ Servicio Técnico – Print Agent
+# Servicio Técnico – Print Agent
 
-Agente Node.js que escucha eventos de una API via **Socket.IO** e imprime tickets de órdenes de servicio técnico en impresoras térmicas USB (ESC/POS).
+Agente local Node.js que recibe trabajos por Socket.IO y los imprime de forma
+serial. Soporta dos perfiles:
 
----
+- `thermal_escpos`: ticket de 80 mm en una impresora térmica USB ESC/POS.
+- `system_pdf`: resumen A4 o Carta en la impresora predeterminada del sistema.
 
-## ¿Qué hace?
+El resumen PDF contiene orden, estado, cliente, técnico, equipo, falla,
+diagnóstico, trabajo realizado, repuestos, costos, fechas y el mismo QR de
+seguimiento utilizado por el ticket térmico.
 
-- Se conecta a la API mediante WebSocket (Socket.IO).
-- Escucha el evento `print_ticket` con los datos de la orden.
-- Imprime el ticket en una impresora térmica USB.
-- Si el payload incluye una URL de seguimiento, imprime un **QR centrado** con el estado actual.
-- Emite `print_success` al servidor al finalizar.
-- Registra toda la actividad en logs rotativos diarios.
+## Flujo
 
-### Flujo oficial de disparo
+1. La API recibe `POST /service-orders/:id/print`.
+2. Comprueba que el agent registrado para `DEFAULT_PRINTER_ID` esté conectado.
+3. El agent acepta el trabajo, lo agrega a su cola local y procesa solo uno a la
+   vez.
+4. Según `printerProfile`, imprime por USB ESC/POS o genera un PDF temporal y lo
+   entrega a la cola predeterminada del sistema operativo.
+5. Emite `print_sent` cuando el dispositivo o la cola del sistema acepta los
+   datos. Este estado no confirma la salida física del papel.
 
-- La API emite `print_ticket` cuando recibe una solicitud manual a `POST /service-orders/:id/print-80mm`.
-- El alta de una orden (`POST /service-orders`) no debe disparar impresión automática.
-
----
+`POST /service-orders/:id/print-80mm` se mantiene como alias compatible y fuerza
+el perfil térmico. El endpoint general recibe el perfil elegido para cada
+trabajo; `PRINT_PROFILE` en la API solo se usa cuando la solicitud lo omite.
 
 ## Requisitos
 
-- Node.js >= 18
-- Impresora térmica USB compatible con ESC/POS
-- macOS / Linux (en Windows el soporte USB puede variar)
+- Node.js >= 18.
+- Una API accesible y el mismo `PRINT_TOKEN` seguro en ambos procesos.
+- Perfil térmico: impresora USB compatible con ESC/POS.
+- Perfil PDF en macOS/Linux: una impresora predeterminada configurada y el
+  comando `lp` disponible mediante CUPS.
+- Perfil PDF en Windows: una impresora predeterminada configurada. El agent usa
+  el spooler de Windows mediante `pdf-to-printer`; no necesita CUPS.
 
----
+## Instalación y configuración
 
-## Instalación
+Para instalar en un PC Windows sin Node.js, descarga el paquete portable
+`serviciotecnico-agent-windows-x64` desde Releases o desde el workflow
+**Build Windows portable agent** y sigue [INSTALL.md](INSTALL.md).
+
+Para desarrollar o ejecutar desde el código fuente:
 
 ```bash
 npm install
-```
-
----
-
-## Configuración
-
-1. Copia `.env.example` a `.env`.
-2. Ajusta los valores según tu entorno.
-
-```bash
 cp .env.example .env
 ```
 
-Variables disponibles:
+| Variable | Valor por defecto | Descripción |
+|---|---|---|
+| `SERVER_URL` | `http://localhost:3500` | URL de la API con Socket.IO |
+| `PRINT_TOKEN` | sin valor | Secreto largo compartido con la API |
+| `AGENT_ID` | hostname | Identidad estable del agent |
+| `PRINTER_ID` | `default-printer` | Identificador lógico; debe coincidir con `DEFAULT_PRINTER_ID` |
+| `LOG_LEVEL` | `info` | `error`, `warn`, `info` o `debug` |
 
-| Variable       | Por defecto              | Descripción                        |
-|----------------|--------------------------|------------------------------------|
-| `SERVER_URL`   | `http://localhost:3500`  | URL de la API con Socket.IO        |
-| `PRINT_TOKEN`  | `tu_token_seguro`        | Token de autenticación del agente  |
-| `LOG_LEVEL`    | `info`                   | Nivel de logs (`error`,`warn`,`info`,`debug`) |
-
-Ejemplo de `.env`:
+Ejemplo:
 
 ```env
-SERVER_URL=https://tu-api.herokuapp.com
-PRINT_TOKEN=mi_token_super_secreto
+SERVER_URL=http://localhost:3500
+PRINT_TOKEN=un-secreto-largo-y-aleatorio
+AGENT_ID=recepcion-01
+PRINTER_ID=default-printer
 LOG_LEVEL=info
 ```
 
-### Logs recomendados
+Para dejar el resumen como fallback de clientes que no envían perfil, configura:
 
-- En produccion: `LOG_LEVEL=info` para ver conexion, inicio de impresion, resultados y errores.
-- En diagnostico: `LOG_LEVEL=debug` para incluir eventos detallados (QR opcional, payload invalido, etc.).
+```env
+DEFAULT_PRINTER_ID=default-printer
+PRINT_PROFILE=system_pdf
+SYSTEM_PAPER_SIZE=LETTER
+```
 
----
+`SYSTEM_PAPER_SIZE` acepta `A4` o `LETTER`. Para volver a la térmica usa
+`PRINT_PROFILE=thermal_escpos`.
+
+### Impresora predeterminada
+
+- macOS: revisa la predeterminada con `lpstat -d`.
+- Linux: revisa la predeterminada con `lpstat -d`; si no existe, configúrala en
+  CUPS o en los ajustes de impresión del escritorio.
+- Windows: define la impresora predeterminada en Configuración > Bluetooth y
+  dispositivos > Impresoras y escáneres.
+
+El perfil PDF no contiene un nombre fijo de impresora. Al omitirlo, cada equipo
+usa su propia impresora predeterminada.
 
 ## Scripts
 
 ```bash
-# Desarrollo (ts-node, sin compilar)
 npm run dev
-
-# Compilar TypeScript → dist/
 npm run build
-
-# Producción (requiere build previo)
 npm run start
 ```
 
----
+## Contrato de impresión
 
-## Payload esperado (`print_ticket`)
+El evento `print_ticket` incluye correlación y perfil:
 
 ```json
 {
+  "type": "service_order_ticket",
+  "jobId": "8f910a4d-...",
+  "printerId": "default-printer",
+  "printerProfile": "system_pdf",
+  "paperSize": "A4",
   "orderId": "abc123",
   "orderNumber": "OT-0042",
-  "mimeType": "text/plain",
-  "content": "Texto del ticket...",
-  "width": 40,
-  "paperWidthMm": 80,
-  "generatedAt": "2026-04-10T12:00:00.000Z",
+  "content": "Texto compatible con la térmica...",
   "tracking": {
-    "url": "https://tu-dominio.com/tracking/abc123",
+    "url": "https://tu-dominio.com/tracking/token-firmado",
     "status": "in_progress",
     "statusLabelEs": "EN PROCESO"
+  },
+  "summary": {
+    "customerName": "Cliente",
+    "deviceType": "Notebook",
+    "deviceBrand": "Lenovo",
+    "problemDescription": "No enciende",
+    "diagnosis": "Fuente defectuosa",
+    "laborCost": 20000,
+    "partsCost": 15000,
+    "totalCost": 35000,
+    "items": []
   }
 }
 ```
 
-> El campo `tracking` es opcional. Si no viene, imprime solo el texto del ticket.
+El agent rechaza payloads sin `jobId`, perfil, resumen, impresora lógica o URL
+de seguimiento.
 
----
+## Entrega, errores y seguridad
 
-## Evento emitido tras imprimir (`print_success`)
+- La cola local evita accesos simultáneos al USB o al spooler.
+- Los últimos 1000 `jobId` se recuerdan para ignorar duplicados durante la vida
+  del proceso.
+- En térmica, `print_sent` se emite tras `flush` y cierre USB.
+- En PDF, `print_sent` se emite cuando `lp` o el spooler de Windows acepta el
+  archivo.
+- Un fallo genera `print_error` con `code`, `message` y `outcomeUncertain`.
+- Los PDF se crean en una carpeta temporal única y se eliminan después de que el
+  comando de impresión termina.
+- Los logs rotan diariamente en `logs/` y se conservan 14 días.
 
-```json
-{
-  "orderId": "abc123",
-  "printedAt": "2026-04-10T12:00:05.000Z"
-}
+## Estructura
+
+```text
+agent.ts                 conexión, validación y cola
+printer-contract.ts      contrato compartido del payload
+thermal-printer.ts       salida USB ESC/POS
+system-pdf-printer.ts    PDF, QR y spooler del sistema
+print-agent-error.ts     errores correlacionados
 ```
-
----
-
-## Logs
-
-Los logs se guardan en `logs/combined-YYYY-MM-DD.log` con rotación de 14 días.
-
-```
-2026-04-10T12:00:00.000Z [INFO]: Connected to API. socketId=abc123
-2026-04-10T12:00:05.000Z [INFO]: Printing order OT-0042 (abc123)
-2026-04-10T12:00:06.000Z [INFO]: QR printed.
-2026-04-10T12:00:06.000Z [INFO]: Print success.
-```
-
----
-
-## Notas técnicas
-
-- Se aplica un **shim de compatibilidad** para `usb v2` ya que `escpos-usb` espera la API legacy (`usb.on`, `usb.findByIds`, `usb.getDeviceList`).
-- El QR se imprime **centrado** con tamaño reducido (`mode: normal, size: 4`). Ajusta `size: 3` si lo quieres más pequeño.
-
----
-
-## Estructura del proyecto
-
-```
-serviciotecnico-agent/
-├── agent.ts          # Código fuente principal
-├── dist/             # Build compilado (generado, no en git)
-├── logs/             # Logs rotativos (generado, no en git)
-├── package.json
-├── tsconfig.json
-└── .gitignore
-```
-
----
 
 ## Licencia
 

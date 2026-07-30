@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+release/
 
 # Logs
 logs/
@@ -11,6 +12,7 @@ logs/
 # Environment variables
 .env
 .env.*
+!.env.example
 
 # IDE
 .idea/
@@ -18,4 +20,3 @@ logs/
 
 # OS
 .DS_Store
-
