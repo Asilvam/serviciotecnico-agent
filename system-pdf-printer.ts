@@ -22,6 +22,11 @@ const money = new Intl.NumberFormat('es-CL', {
 const dateTime = new Intl.DateTimeFormat('es-CL', {
   dateStyle: 'medium',
   timeStyle: 'short',
+  timeZone: 'America/Santiago',
+});
+const calendarDate = new Intl.DateTimeFormat('es-CL', {
+  dateStyle: 'medium',
+  timeZone: 'UTC',
 });
 
 function formatDate(value?: string): string {
@@ -30,6 +35,16 @@ function formatDate(value?: string): string {
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : dateTime.format(parsed);
+}
+
+function formatCalendarDate(value?: string): string {
+  if (!value) {
+    return '—';
+  }
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(value);
+  return match
+    ? calendarDate.format(new Date(`${match[1]}T00:00:00.000Z`))
+    : value;
 }
 
 function safeText(value?: string): string {
@@ -102,7 +117,7 @@ function addSummary(
   addLabelValue(
     document,
     'Entrega estimada',
-    formatDate(summary.estimatedDelivery),
+    formatCalendarDate(summary.estimatedDelivery),
   );
   if (summary.deliveredAt) {
     addLabelValue(document, 'Entregado', formatDate(summary.deliveredAt));
