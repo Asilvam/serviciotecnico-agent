@@ -12,6 +12,56 @@ PC que imprimirá no necesitas instalar Node, npm, Git, la API ni el frontend.
   - Para el resumen normal, debe ser la impresora predeterminada de Windows.
   - Para el ticket térmico, debe ser USB y compatible con ESC/POS.
 
+## Obtener el agente desde GitHub Actions
+
+El repositorio incluye el workflow **Build Windows portable agent**, que crea
+un paquete para Windows con Node.js, las dependencias y el agent compilado. El
+PC de destino no necesita tener Node.js, npm ni Git instalados.
+
+### Generar el paquete manualmente
+
+1. Sube el repositorio a GitHub asegurándote de incluir el archivo:
+
+```text
+.github/workflows/build-windows-portable.yml
+```
+
+2. En GitHub, abre el repositorio y entra en la pestaña **Actions**.
+3. Si GitHub solicita habilitar los workflows, selecciona **I understand my
+   workflows, go ahead and enable them**.
+4. En la lista de workflows, selecciona **Build Windows portable agent**.
+5. Pulsa **Run workflow**, elige la rama que contiene los cambios y vuelve a
+   pulsar **Run workflow** para confirmar.
+6. Espera a que la ejecución termine con estado correcto. El workflow instala
+   las dependencias, compila el agent, crea el paquete portable y comprueba que
+   su runtime pueda cargar las dependencias necesarias.
+7. Abre la ejecución terminada y, al final de la página, busca la sección
+   **Artifacts**.
+8. Descarga el artefacto **serviciotecnico-agent-windows-x64**.
+9. Copia el archivo descargado al PC Windows donde se conectará la impresora y
+   continúa con la sección **Instalación**.
+
+Los artefactos de Actions requieren iniciar sesión en GitHub y se conservan
+durante el periodo configurado por GitHub para el repositorio.
+
+### Publicar una versión descargable en Releases
+
+Para conservar y distribuir una versión identificada, crea un tag con el
+prefijo `agent-v` y súbelo a GitHub:
+
+```bash
+git tag agent-v1.0.0
+git push origin agent-v1.0.0
+```
+
+El workflow se ejecutará automáticamente y creará una GitHub Release con el
+archivo `serviciotecnico-agent-windows-x64.zip`. Para descargarlo:
+
+1. Abre la página principal del repositorio en GitHub.
+2. Entra en **Releases**.
+3. Selecciona la versión correspondiente, por ejemplo `agent-v1.0.0`.
+4. Descarga `serviciotecnico-agent-windows-x64.zip` desde **Assets**.
+
 ## Instalación
 
 1. Descomprime `serviciotecnico-agent-windows-x64.zip`.
