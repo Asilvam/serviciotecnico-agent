@@ -1,208 +1,156 @@
+import { createWriteStream } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
+import { sendPdfToDefaultPrinter } from './default-printer';
 import type { PrintTicketSocketPayload } from './printer-contract';
 import { PrintAgentError } from './print-agent-error';
 
-type EscPosModule = {
-  USB: new () => {
-    open(callback: (error: Error | null) => void): void;
-    close(callback: (error?: Error | null) => void): void;
-  };
-  Printer: new (device: unknown) => any;
-};
+const pointsPerMillimeter = 72 / 25.4;
+const pageWidth = 80 * pointsPerMillimeter;
+const horizontalMargin = 12;
+const topMargin = 12;
+const bottomMargin = 12;
+const fontSize = 7.5;
+const lineHeight = 9.4;
+const qrSize = 92;
+const qrGap = 8;
+const qrCaptionHeight = 34;
+const minimumPageHeight = 240;
 
-function loadEscPos(): EscPosModule {
-  // Thermal USB dependencies are loaded only when this profile is selected.
-  // This lets the system-PDF profile run on Windows without a USB adapter.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const escpos = require('escpos') as EscPosModule;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const usbModule = require('usb') as any;
-
-  if (usbModule?.usb && typeof usbModule.on !== 'function') {
-    const hotplugUsb = usbModule.usb;
-    usbModule.on = hotplugUsb.on.bind(hotplugUsb);
-    usbModule.removeAllListeners =
-      hotplugUsb.removeAllListeners.bind(hotplugUsb);
-  }
-  if (
-    typeof usbModule.findByIds !== 'function' &&
-    typeof usbModule?.usb?.findByIds === 'function'
-  ) {
-    usbModule.findByIds = usbModule.usb.findByIds.bind(usbModule.usb);
-  }
-  if (
-    typeof usbModule.getDeviceList !== 'function' &&
-    typeof usbModule?.usb?.getDeviceList === 'function'
-  ) {
-    usbModule.getDeviceList = usbModule.usb.getDeviceList.bind(usbModule.usb);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const usbAdapter = require('escpos-usb') as { default?: unknown };
-  escpos.USB = (usbAdapter?.default ?? usbAdapter) as EscPosModule['USB'];
-  return escpos;
+function ticketLines(content: string): string[] {
+  const normalized = content.replace(/\r\n?/g, '\n').trimEnd();
+  return normalized ? normalized.split('\n') : [''];
 }
 
-function closeDevice(device: any): Promise<void> {
-  return new Promise((resolve, reject) => {
-    try {
-      device.close((closeError?: Error | null) => {
-        if (closeError) {
-          reject(closeError);
-          return;
-        }
-        resolve();
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function flushAndClose(printer: any, device: any): Promise<void> {
-  return new Promise((resolve, reject) => {
-    try {
-      printer.flush((transferError?: Error | null) => {
-        if (transferError) {
-          void closeDevice(device).then(
-            () =>
-              reject(
-                new PrintAgentError(
-                  'USB_TRANSFER_FAILED',
-                  transferError.message,
-                  true,
-                ),
-              ),
-            (closeError: unknown) =>
-              reject(
-                new PrintAgentError(
-                  'USB_TRANSFER_AND_CLOSE_FAILED',
-                  closeError instanceof Error
-                    ? `${transferError.message}; ${closeError.message}`
-                    : transferError.message,
-                  true,
-                ),
-              ),
-          );
-          return;
-        }
-
-        void closeDevice(device).then(
-          resolve,
-          (closeError: unknown) =>
-            reject(
-              new PrintAgentError(
-                'PRINTER_CLOSE_FAILED',
-                closeError instanceof Error
-                  ? closeError.message
-                  : 'No fue posible cerrar la impresora.',
-                true,
-              ),
-            ),
-        );
-      });
-    } catch (error) {
-      reject(
-        new PrintAgentError(
-          'USB_TRANSFER_FAILED',
-          error instanceof Error ? error.message : 'Fallo de transferencia USB.',
-          true,
-        ),
-      );
-    }
-  });
-}
-
-function rejectAfterClosing(
-  device: any,
-  error: PrintAgentError,
-  reject: (reason?: unknown) => void,
-): void {
-  void closeDevice(device).then(
-    () => reject(error),
-    (closeError: unknown) =>
-      reject(
-        new PrintAgentError(
-          'PRINTER_CLOSE_FAILED',
-          closeError instanceof Error ? closeError.message : error.message,
-          error.outcomeUncertain,
-        ),
-      ),
+export function calculateThermalPageHeight(lineCount: number): number {
+  const contentHeight = Math.max(1, lineCount) * lineHeight;
+  return Math.max(
+    minimumPageHeight,
+    topMargin + contentHeight + qrGap + qrSize + qrCaptionHeight + bottomMargin,
   );
 }
 
-export function printThermalTicket(
+export async function generateThermalPdf(
+  filePath: string,
   data: PrintTicketSocketPayload,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    try {
-      const escpos = loadEscPos();
-      const device = new escpos.USB();
-      const printer = new escpos.Printer(device);
-
-      device.open((openError: Error | null) => {
-        if (openError) {
-          reject(new PrintAgentError('HARDWARE_ERROR', openError.message));
-          return;
-        }
-
-        try {
-          printer
-            .model('qsprinter')
-            .font('a')
-            .pureText(data.content)
-            .feed(1)
-            .align('ct')
-            .text('Consulta estado:');
-
-          printer.qrimage(
-            data.tracking.url,
-            { type: 'png', mode: 'normal', size: 4 },
-            (qrError: Error | null) => {
-              if (qrError) {
-                rejectAfterClosing(
-                  device,
-                  new PrintAgentError('QR_PRINT_FAILED', qrError.message),
-                  reject,
-                );
-                return;
-              }
-
-              try {
-                printer
-                  .align('lt')
-                  .text(`Estado actual: ${data.tracking.statusLabelEs}`)
-                  .feed(2)
-                  .cut();
-                void flushAndClose(printer, device).then(resolve, reject);
-              } catch (error) {
-                rejectAfterClosing(
-                  device,
-                  new PrintAgentError(
-                    'PRINT_PREPARATION_FAILED',
-                    error instanceof Error
-                      ? error.message
-                      : 'No fue posible preparar el ticket.',
-                  ),
-                  reject,
-                );
-              }
-            },
-          );
-        } catch (error) {
-          rejectAfterClosing(
-            device,
-            new PrintAgentError(
-              'PRINT_PREPARATION_FAILED',
-              error instanceof Error
-                ? error.message
-                : 'No fue posible preparar el ticket.',
-            ),
-            reject,
-          );
-        }
-      });
-    } catch (error) {
-      reject(error);
-    }
+  const lines = ticketLines(data.content);
+  const pageHeight = calculateThermalPageHeight(lines.length);
+  const usableWidth = pageWidth - horizontalMargin * 2;
+  const qrBuffer = await QRCode.toBuffer(data.tracking.url, {
+    type: 'png',
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 220,
   });
+  const document = new PDFDocument({
+    size: [pageWidth, pageHeight],
+    margins: {
+      top: topMargin,
+      right: horizontalMargin,
+      bottom: bottomMargin,
+      left: horizontalMargin,
+    },
+    info: {
+      Title: `Ticket de servicio ${data.orderNumber}`,
+      Subject: 'Ticket térmico de orden de servicio',
+    },
+  });
+  const output = createWriteStream(filePath);
+  const completed = new Promise<void>((resolve, reject) => {
+    output.once('finish', resolve);
+    output.once('error', reject);
+    document.once('error', reject);
+  });
+  document.pipe(output);
+
+  document
+    .rect(0, 0, pageWidth, pageHeight)
+    .fill('#ffffff')
+    .fillColor('#000000')
+    .font('Courier')
+    .fontSize(fontSize);
+
+  lines.forEach((line, index) => {
+    document.text(
+      line,
+      horizontalMargin,
+      topMargin + index * lineHeight,
+      {
+        width: usableWidth,
+        lineBreak: false,
+      },
+    );
+  });
+
+  const qrTop = topMargin + lines.length * lineHeight + qrGap;
+  document.image(qrBuffer, (pageWidth - qrSize) / 2, qrTop, {
+    width: qrSize,
+    height: qrSize,
+  });
+  document
+    .font('Helvetica-Bold')
+    .fontSize(7.5)
+    .text('CONSULTA EL ESTADO DE TU ORDEN', horizontalMargin, qrTop + qrSize + 4, {
+      align: 'center',
+      width: usableWidth,
+    })
+    .font('Helvetica')
+    .fontSize(6.5)
+    .text(
+      `Estado actual: ${data.tracking.statusLabelEs}`,
+      horizontalMargin,
+      qrTop + qrSize + 15,
+      { align: 'center', width: usableWidth },
+    );
+
+  document.end();
+  await completed;
+}
+
+export async function printThermalTicket(
+  data: PrintTicketSocketPayload,
+): Promise<void> {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), 'serviciotecnico-ticket-'),
+  );
+  const pdfPath = join(temporaryDirectory, 'ticket-80mm.pdf');
+  let acceptedBySpooler = false;
+  try {
+    await generateThermalPdf(pdfPath, data);
+    const configuredPaperSize = process.env.THERMAL_PAPER_SIZE?.trim();
+    await sendPdfToDefaultPrinter(pdfPath, {
+      jobTitle: `Ticket ${data.orderNumber}`,
+      ...(configuredPaperSize ? { paperSize: configuredPaperSize } : {}),
+      scale: 'noscale',
+    });
+    acceptedBySpooler = true;
+  } catch (error) {
+    if (error instanceof PrintAgentError) {
+      throw error;
+    }
+    throw new PrintAgentError(
+      'THERMAL_PDF_PRINT_FAILED',
+      error instanceof Error
+        ? error.message
+        : 'No fue posible generar o imprimir el ticket de 80 mm.',
+    );
+  } finally {
+    try {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    } catch (error) {
+      if (acceptedBySpooler) {
+        throw new PrintAgentError(
+          'TEMP_CLEANUP_FAILED',
+          error instanceof Error
+            ? error.message
+            : 'No fue posible eliminar el PDF temporal.',
+          true,
+        );
+      }
+    }
+  }
 }

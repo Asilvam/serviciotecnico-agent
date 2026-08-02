@@ -3,7 +3,8 @@
 Agente local Node.js que recibe trabajos por Socket.IO y los imprime de forma
 serial. Soporta dos perfiles:
 
-- `thermal_escpos`: ticket de 80 mm en una impresora térmica USB ESC/POS.
+- `thermal_escpos`: ticket PDF de 80 mm enviado a la impresora predeterminada
+  del sistema. El nombre se conserva por compatibilidad con la API y el front.
 - `system_pdf`: resumen A4 o Carta en la impresora predeterminada del sistema.
 
 El resumen PDF contiene orden, estado, cliente, técnico, equipo, falla,
@@ -16,10 +17,10 @@ seguimiento utilizado por el ticket térmico.
 2. Comprueba que el agent registrado para `DEFAULT_PRINTER_ID` esté conectado.
 3. El agent acepta el trabajo, lo agrega a su cola local y procesa solo uno a la
    vez.
-4. Según `printerProfile`, imprime por USB ESC/POS o genera un PDF temporal y lo
+4. Según `printerProfile`, genera un ticket PDF de 80 mm o un resumen PDF y lo
    entrega a la cola predeterminada del sistema operativo.
-5. Emite `print_sent` cuando el dispositivo o la cola del sistema acepta los
-   datos. Este estado no confirma la salida física del papel.
+5. Emite `print_sent` cuando la cola del sistema acepta el archivo. Este estado
+   no confirma la salida física del papel.
 
 `POST /service-orders/:id/print-80mm` se mantiene como alias compatible y fuerza
 el perfil térmico. El endpoint general recibe el perfil elegido para cada
@@ -29,10 +30,11 @@ trabajo; `PRINT_PROFILE` en la API solo se usa cuando la solicitud lo omite.
 
 - Node.js >= 18.
 - Una API accesible y el mismo `PRINT_TOKEN` seguro en ambos procesos.
-- Perfil térmico: impresora USB compatible con ESC/POS.
-- Perfil PDF en macOS/Linux: una impresora predeterminada configurada y el
+- Perfil térmico: una impresora térmica de 80 mm instalada, con su controlador y
+  formato de papel configurados, y seleccionada como predeterminada.
+- En macOS/Linux: una impresora predeterminada configurada y el
   comando `lp` disponible mediante CUPS.
-- Perfil PDF en Windows: una impresora predeterminada configurada. El agent usa
+- En Windows: una impresora predeterminada configurada. El agent usa
   el spooler de Windows mediante `pdf-to-printer`; no necesita CUPS.
 
 ## Instalación y configuración
@@ -55,6 +57,7 @@ cp .env.example .env
 | `AGENT_ID` | hostname | Identidad estable del agent |
 | `PRINTER_ID` | `default-printer` | Identificador lógico; debe coincidir con `DEFAULT_PRINTER_ID` |
 | `LOG_LEVEL` | `info` | `error`, `warn`, `info` o `debug` |
+| `THERMAL_PAPER_SIZE` | formato predeterminado | Nombre exacto del papel térmico registrado por el driver; normalmente se omite |
 
 Ejemplo:
 
@@ -64,6 +67,7 @@ PRINT_TOKEN=un-secreto-largo-y-aleatorio
 AGENT_ID=recepcion-01
 PRINTER_ID=default-printer
 LOG_LEVEL=info
+# THERMAL_PAPER_SIZE=80mm
 ```
 
 Para dejar el resumen como fallback de clientes que no envían perfil, configura:
@@ -85,8 +89,10 @@ SYSTEM_PAPER_SIZE=LETTER
 - Windows: define la impresora predeterminada en Configuración > Bluetooth y
   dispositivos > Impresoras y escáneres.
 
-El perfil PDF no contiene un nombre fijo de impresora. Al omitirlo, cada equipo
-usa su propia impresora predeterminada.
+Ningún perfil contiene un nombre físico fijo. Cada equipo usa su impresora
+predeterminada. Para el ticket, configura en el driver el papel de 80 mm; si el
+driver exige seleccionar un formulario por nombre, usa `THERMAL_PAPER_SIZE` con
+el nombre exacto que Windows muestra.
 
 ## Scripts
 
@@ -134,12 +140,11 @@ de seguimiento.
 
 ## Entrega, errores y seguridad
 
-- La cola local evita accesos simultáneos al USB o al spooler.
+- La cola local evita accesos simultáneos al spooler.
 - Los últimos 1000 `jobId` se recuerdan para ignorar duplicados durante la vida
   del proceso.
-- En térmica, `print_sent` se emite tras `flush` y cierre USB.
-- En PDF, `print_sent` se emite cuando `lp` o el spooler de Windows acepta el
-  archivo.
+- En ambos perfiles, `print_sent` se emite cuando `lp` o el spooler de Windows
+  acepta el archivo.
 - Un fallo genera `print_error` con `code`, `message` y `outcomeUncertain`.
 - Los PDF se crean en una carpeta temporal única y se eliminan después de que el
   comando de impresión termina.
@@ -150,7 +155,8 @@ de seguimiento.
 ```text
 agent.ts                 conexión, validación y cola
 printer-contract.ts      contrato compartido del payload
-thermal-printer.ts       salida USB ESC/POS
+default-printer.ts       entrega de PDF al spooler predeterminado
+thermal-printer.ts       ticket PDF de 80 mm y QR
 system-pdf-printer.ts    PDF, QR y spooler del sistema
 print-agent-error.ts     errores correlacionados
 ```

@@ -1,11 +1,10 @@
-import { execFile } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
+import { sendPdfToDefaultPrinter } from './default-printer';
 import type {
   PrintDocumentSummary,
   PrintTicketSocketPayload,
@@ -13,7 +12,6 @@ import type {
 } from './printer-contract';
 import { PrintAgentError } from './print-agent-error';
 
-const execFileAsync = promisify(execFile);
 const money = new Intl.NumberFormat('es-CL', {
   style: 'currency',
   currency: 'CLP',
@@ -270,57 +268,6 @@ export async function generateSystemPdf(
   await completed;
 }
 
-async function sendToDefaultPrinter(
-  filePath: string,
-  paperSize: SystemPaperSize,
-  orderNumber: string,
-): Promise<void> {
-  if (process.platform === 'win32') {
-    const { print } = await import('pdf-to-printer');
-    await print(filePath, {
-      paperSize,
-      scale: 'fit',
-      silent: true,
-    });
-    return;
-  }
-
-  if (process.platform === 'darwin' || process.platform === 'linux') {
-    try {
-      await execFileAsync('lp', [
-        '-o',
-        'fit-to-page',
-        '-o',
-        `media=${paperSize === 'LETTER' ? 'Letter' : 'A4'}`,
-        '-t',
-        `Orden ${orderNumber}`,
-        '--',
-        filePath,
-      ]);
-    } catch (error) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === 'ENOENT') {
-        throw new PrintAgentError(
-          'PRINT_COMMAND_NOT_FOUND',
-          'No se encontró el comando lp. Instala o habilita CUPS.',
-        );
-      }
-      throw new PrintAgentError(
-        'SYSTEM_PRINT_FAILED',
-        error instanceof Error
-          ? error.message
-          : 'El sistema operativo rechazó el documento.',
-      );
-    }
-    return;
-  }
-
-  throw new PrintAgentError(
-    'UNSUPPORTED_PLATFORM',
-    `La impresión PDF no está soportada en ${process.platform}.`,
-  );
-}
-
 export async function printSystemPdf(
   data: PrintTicketSocketPayload,
 ): Promise<void> {
@@ -331,11 +278,11 @@ export async function printSystemPdf(
   let acceptedBySpooler = false;
   try {
     await generateSystemPdf(pdfPath, data);
-    await sendToDefaultPrinter(
-      pdfPath,
-      data.paperSize ?? 'LETTER',
-      data.orderNumber,
-    );
+    await sendPdfToDefaultPrinter(pdfPath, {
+      jobTitle: `Orden ${data.orderNumber}`,
+      paperSize: data.paperSize ?? 'LETTER',
+      scale: 'fit',
+    });
     acceptedBySpooler = true;
   } catch (error) {
     if (error instanceof PrintAgentError) {

@@ -41,7 +41,7 @@ jobs:
         shell: pwsh
         run: |
           Push-Location release/serviciotecnico-agent-windows-x64
-          ./runtime/node.exe -e "['dotenv','pdfkit','qrcode','pdf-to-printer','socket.io-client','escpos','escpos-usb','usb','winston','winston-daily-rotate-file'].forEach(require.resolve); require('./dist/system-pdf-printer.js'); require('./dist/thermal-printer.js'); console.log('Portable runtime OK')"
+          ./runtime/node.exe -e "['dotenv','pdfkit','qrcode','pdf-to-printer','socket.io-client','winston','winston-daily-rotate-file'].forEach(require.resolve); require('./dist/default-printer.js'); require('./dist/system-pdf-printer.js'); require('./dist/thermal-printer.js'); console.log('Portable runtime OK')"
           if ($LASTEXITCODE -ne 0) {
             throw "El runtime portable no pudo cargar el agent."
           }
