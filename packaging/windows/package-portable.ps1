@@ -51,6 +51,8 @@ Copy-Item (Join-Path $RepositoryRoot "package.json") $PackageRoot
 Copy-Item (Join-Path $RepositoryRoot "package-lock.json") $PackageRoot
 Copy-Item (Join-Path $PSScriptRoot "CONFIGURAR-AGENT.cmd") $PackageRoot
 Copy-Item (Join-Path $PSScriptRoot "INICIAR-AGENT.cmd") $PackageRoot
+Copy-Item (Join-Path $PSScriptRoot "INSTALAR-INICIO-AUTOMATICO.cmd") $PackageRoot
+Copy-Item (Join-Path $PSScriptRoot "INSTALAR-INICIO-AUTOMATICO.ps1") $PackageRoot
 
 $Package = Get-Content (Join-Path $RepositoryRoot "package.json") -Raw |
   ConvertFrom-Json
@@ -63,6 +65,8 @@ $PackagedPaths = @(
   (Join-Path $PackageRoot ".env.example"),
   (Join-Path $PackageRoot "CONFIGURAR-AGENT.cmd"),
   (Join-Path $PackageRoot "INICIAR-AGENT.cmd"),
+  (Join-Path $PackageRoot "INSTALAR-INICIO-AUTOMATICO.cmd"),
+  (Join-Path $PackageRoot "INSTALAR-INICIO-AUTOMATICO.ps1"),
   (Join-Path $PackageRoot "INSTALL.md")
 )
 

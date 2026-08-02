@@ -93,6 +93,29 @@ Connected to API. ... agentId=recepcion-pc-01 printerId=default-printer
 
 Mantén esa ventana abierta para recibir trabajos de impresión.
 
+## Inicio automático con Windows
+
+Después de comprobar que el agent se conecta correctamente, ejecuta una sola
+vez `INSTALAR-INICIO-AUTOMATICO.cmd`. El script crea un acceso directo en la
+carpeta de Inicio del usuario actual y no requiere permisos de administrador.
+
+A partir del próximo inicio de sesión en Windows, `INICIAR-AGENT.cmd` se abrirá
+automáticamente. Mantén su ventana abierta para que el PC continúe recibiendo
+trabajos de impresión.
+
+No muevas ni cambies el nombre de la carpeta `C:\ServicioTecnicoAgent` después
+de configurar el inicio automático. Si necesitas moverla, ejecuta nuevamente
+`INSTALAR-INICIO-AUTOMATICO.cmd` desde la nueva ubicación.
+
+Para desactivar el inicio automático:
+
+1. Presiona `Win + R`.
+2. Escribe `shell:startup` y presiona Enter.
+3. Elimina el acceso directo `Servicio Tecnico Print Agent`.
+
+`CONFIGURAR-AGENT.cmd` solo debe ejecutarse al instalar el agent o al cambiar
+su configuración. No es necesario ejecutarlo después de cada reinicio.
+
 ## Significado de la configuración
 
 - `SERVER_URL`: dirección accesible de la API, sin rutas adicionales.
@@ -129,6 +152,12 @@ confirma que sea compatible con ESC/POS.
 
 Revisa `SERVER_URL`, `PRINT_TOKEN`, la conexión a internet y que la API esté
 activa.
+
+### El agent no se inicia con Windows
+
+Presiona `Win + R`, ejecuta `shell:startup` y confirma que exista el acceso
+directo `Servicio Tecnico Print Agent`. Si no existe o la carpeta del agent fue
+movida, ejecuta nuevamente `INSTALAR-INICIO-AUTOMATICO.cmd`.
 
 ### La API indica que no hay impresora disponible
 
