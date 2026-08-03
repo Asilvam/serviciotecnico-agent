@@ -3,8 +3,9 @@
 Agente local Node.js que recibe trabajos por Socket.IO y los imprime de forma
 serial. Soporta dos perfiles:
 
-- `thermal_escpos`: ticket PDF de 80 mm enviado a la impresora predeterminada
-  del sistema. El nombre se conserva por compatibilidad con la API y el front.
+- `thermal_escpos`: ticket BXL/POS de 80 mm enviado como datos RAW a la cola
+  predeterminada de Windows. El nombre se conserva por compatibilidad con la API
+  y el front.
 - `system_pdf`: resumen A4 o Carta en la impresora predeterminada del sistema.
 
 El resumen PDF contiene orden, estado, cliente, técnico, equipo, falla,
@@ -17,10 +18,10 @@ seguimiento utilizado por el ticket térmico.
 2. Comprueba que el agent registrado para `DEFAULT_PRINTER_ID` esté conectado.
 3. El agent acepta el trabajo, lo agrega a su cola local y procesa solo uno a la
    vez.
-4. Según `printerProfile`, genera un ticket PDF de 80 mm o un resumen PDF y lo
-   entrega a la cola predeterminada del sistema operativo.
-5. Emite `print_sent` cuando la cola del sistema acepta el archivo. Este estado
-   no confirma la salida física del papel.
+4. Según `printerProfile`, envía comandos térmicos RAW en Windows o genera un
+   resumen PDF para la cola predeterminada del sistema operativo.
+5. Para el ticket RAW, espera que Windows complete o retire el trabajo de la
+   cola. Para el resumen, confirma cuando el spooler acepta el PDF.
 
 `POST /service-orders/:id/print-80mm` se mantiene como alias compatible y fuerza
 el perfil térmico. El endpoint general recibe el perfil elegido para cada
@@ -30,12 +31,12 @@ trabajo; `PRINT_PROFILE` en la API solo se usa cuando la solicitud lo omite.
 
 - Node.js >= 18.
 - Una API accesible y el mismo `PRINT_TOKEN` seguro en ambos procesos.
-- Perfil térmico: una impresora térmica de 80 mm instalada, con su controlador y
-  formato de papel configurados, y seleccionada como predeterminada.
+- Perfil térmico en Windows: una impresora de 80 mm compatible con BXL/POS o
+  ESC/POS, instalada con su controlador y seleccionada como predeterminada.
 - En macOS/Linux: una impresora predeterminada configurada y el
   comando `lp` disponible mediante CUPS.
-- En Windows: una impresora predeterminada configurada. El agent usa
-  el spooler de Windows mediante `pdf-to-printer`; no necesita CUPS.
+- En Windows: una impresora predeterminada configurada. El ticket usa el spooler
+  RAW de Windows; el resumen utiliza `pdf-to-printer`. No necesita CUPS.
 
 ## Instalación y configuración
 
@@ -57,7 +58,6 @@ cp .env.example .env
 | `AGENT_ID` | hostname | Identidad estable del agent |
 | `PRINTER_ID` | `default-printer` | Identificador lógico; debe coincidir con `DEFAULT_PRINTER_ID` |
 | `LOG_LEVEL` | `info` | `error`, `warn`, `info` o `debug` |
-| `THERMAL_PAPER_SIZE` | formato predeterminado | Nombre exacto del papel térmico registrado por el driver; normalmente se omite |
 
 Ejemplo:
 
@@ -67,7 +67,6 @@ PRINT_TOKEN=un-secreto-largo-y-aleatorio
 AGENT_ID=recepcion-01
 PRINTER_ID=default-printer
 LOG_LEVEL=info
-# THERMAL_PAPER_SIZE=80mm
 ```
 
 Para dejar el resumen como fallback de clientes que no envían perfil, configura:
@@ -90,9 +89,8 @@ SYSTEM_PAPER_SIZE=LETTER
   dispositivos > Impresoras y escáneres.
 
 Ningún perfil contiene un nombre físico fijo. Cada equipo usa su impresora
-predeterminada. Para el ticket, configura en el driver el papel de 80 mm; si el
-driver exige seleccionar un formulario por nombre, usa `THERMAL_PAPER_SIZE` con
-el nombre exacto que Windows muestra.
+predeterminada. En Windows, el ticket RAW no depende del formulario de papel del
+driver; la impresora debe tener instalado el rollo de 80 mm.
 
 ## Scripts
 
@@ -143,8 +141,11 @@ de seguimiento.
 - La cola local evita accesos simultáneos al spooler.
 - Los últimos 1000 `jobId` se recuerdan para ignorar duplicados durante la vida
   del proceso.
-- En ambos perfiles, `print_sent` se emite cuando `lp` o el spooler de Windows
-  acepta el archivo.
+- En el ticket RAW de Windows, `print_sent` se emite cuando el trabajo desaparece
+  de la cola o Windows lo marca como completado. Un estado `Error`, `Offline`,
+  `PaperOut` o un bloqueo de 15 segundos genera `print_error`.
+- En el resumen PDF, `print_sent` se emite cuando `lp` o el spooler de Windows
+  acepta el archivo; no confirma la salida física del papel.
 - Un fallo genera `print_error` con `code`, `message` y `outcomeUncertain`.
 - Los PDF se crean en una carpeta temporal única y se eliminan después de que el
   comando de impresión termina.
@@ -156,8 +157,10 @@ de seguimiento.
 agent.ts                 conexión, validación y cola
 printer-contract.ts      contrato compartido del payload
 default-printer.ts       entrega de PDF al spooler predeterminado
-thermal-printer.ts       ticket PDF de 80 mm y QR
+thermal-printer.ts       comandos térmicos BXL/POS, QR y fallback PDF
 system-pdf-printer.ts    PDF, QR y spooler del sistema
+windows-raw-printer.ts   envío RAW y ejecución controlada en Windows
+windows-print-raw.ps1    Win32 spooler y seguimiento del trabajo
 print-agent-error.ts     errores correlacionados
 ```
 

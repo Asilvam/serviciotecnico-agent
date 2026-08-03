@@ -7,6 +7,7 @@ import QRCode from 'qrcode';
 import { sendPdfToDefaultPrinter } from './default-printer';
 import type { PrintTicketSocketPayload } from './printer-contract';
 import { PrintAgentError } from './print-agent-error';
+import { sendRawToDefaultWindowsPrinter } from './windows-raw-printer';
 
 const pointsPerMillimeter = 72 / 25.4;
 const pageWidth = 80 * pointsPerMillimeter;
@@ -23,6 +24,62 @@ const minimumPageHeight = 240;
 function ticketLines(content: string): string[] {
   const normalized = content.replace(/\r\n?/g, '\n').trimEnd();
   return normalized ? normalized.split('\n') : [''];
+}
+
+function asciiText(value: string): string {
+  return value
+    .replace(/[–—]/g, '-')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x09\x0a\x0d\x20-\x7e]/g, '?');
+}
+
+function qrStoreCommand(value: string): Buffer {
+  const data = Buffer.from(value, 'utf8');
+  const commandLength = data.length + 3;
+  if (commandLength > 0xffff) {
+    throw new PrintAgentError(
+      'QR_DATA_TOO_LONG',
+      'La URL de seguimiento es demasiado larga para el ticket.',
+    );
+  }
+  return Buffer.concat([
+    Buffer.from([
+      0x1d,
+      0x28,
+      0x6b,
+      commandLength & 0xff,
+      (commandLength >> 8) & 0xff,
+      0x31,
+      0x50,
+      0x30,
+    ]),
+    data,
+  ]);
+}
+
+export function buildWindowsRawTicket(
+  data: PrintTicketSocketPayload,
+): Buffer {
+  const text = asciiText(data.content).trimEnd();
+  const status = asciiText(data.tracking.statusLabelEs);
+  return Buffer.concat([
+    Buffer.from([0x1b, 0x40]),
+    Buffer.from([0x1b, 0x61, 0x00]),
+    Buffer.from(`${text}\n\n`, 'ascii'),
+    Buffer.from([0x1b, 0x61, 0x01]),
+    Buffer.from('Consulta estado:\n', 'ascii'),
+    Buffer.from([0x1d, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]),
+    Buffer.from([0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, 0x06]),
+    Buffer.from([0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31]),
+    qrStoreCommand(data.tracking.url),
+    Buffer.from([0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30]),
+    Buffer.from(`\nEstado actual: ${status}\n\n\n`, 'ascii'),
+    Buffer.from([0x1b, 0x61, 0x00]),
+    Buffer.from([0x1d, 0x56, 0x00]),
+  ]);
 }
 
 export function calculateThermalPageHeight(lineCount: number): number {
@@ -114,6 +171,14 @@ export async function generateThermalPdf(
 export async function printThermalTicket(
   data: PrintTicketSocketPayload,
 ): Promise<void> {
+  if (process.platform === 'win32') {
+    await sendRawToDefaultWindowsPrinter(
+      buildWindowsRawTicket(data),
+      `Ticket ${data.orderNumber}`,
+    );
+    return;
+  }
+
   const temporaryDirectory = await mkdtemp(
     join(tmpdir(), 'serviciotecnico-ticket-'),
   );

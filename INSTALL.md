@@ -9,9 +9,9 @@ PC que imprimirá no necesitas instalar Node, npm, Git, la API ni el frontend.
 - Acceso por red a la API de Servicio Técnico.
 - El `PRINT_TOKEN` configurado en la API.
 - Una impresora instalada y configurada como predeterminada:
-  - Para el resumen normal, debe ser la impresora predeterminada de Windows.
-  - Para el ticket térmico, debe tener su controlador y papel de 80 mm
-    configurados en Windows.
+  - Para el resumen normal, usa una impresora A4/Carta.
+  - Para el ticket térmico, usa una impresora de 80 mm compatible con BXL/POS o
+    ESC/POS.
 
 ## Obtener el agente desde GitHub Actions
 
@@ -81,7 +81,6 @@ PRINT_TOKEN=el-mismo-secreto-de-la-api
 AGENT_ID=recepcion-pc-01
 PRINTER_ID=default-printer
 LOG_LEVEL=info
-# THERMAL_PAPER_SIZE=80mm
 ```
 
 5. Guarda y cierra el Bloc de notas.
@@ -125,8 +124,6 @@ su configuración. No es necesario ejecutarlo después de cada reinicio.
 - `AGENT_ID`: nombre único para identificar este PC.
 - `PRINTER_ID`: debe coincidir con `DEFAULT_PRINTER_ID` de la API.
 - `LOG_LEVEL`: normalmente debe permanecer en `info`.
-- `THERMAL_PAPER_SIZE`: normalmente se omite. Úsalo solo si el controlador
-  exige el nombre exacto de un formulario térmico registrado en Windows.
 
 El tipo de impresión no se configura aquí. El frontend indica en cada trabajo
 si debe imprimir el ticket térmico o el resumen normal Letter.
@@ -149,11 +146,11 @@ Déjala configurada como impresora predeterminada de Windows.
 
 1. Conecta la impresora e instala el controlador del fabricante.
 2. Imprime una página de prueba desde Windows.
-3. Configura un papel de 80 mm en las preferencias del controlador.
+3. Coloca el rollo de 80 mm.
 4. Déjala como impresora predeterminada antes de enviar el ticket.
 
-El agent imprime mediante la cola de Windows. No usa acceso USB directo ni
-requiere controladores WinUSB/libusb.
+El agent envía comandos BXL/POS como datos RAW mediante la cola de Windows. No
+usa acceso USB directo ni requiere controladores WinUSB/libusb.
 
 ## Problemas básicos
 
@@ -178,11 +175,12 @@ con `DEFAULT_PRINTER_ID`.
 Confirma que Windows tenga una impresora predeterminada y que puedas imprimir
 una página de prueba desde el sistema.
 
-### El ticket térmico sale cortado o con tamaño incorrecto
+### El ticket térmico no se imprime
 
-Confirma que el controlador tenga seleccionado el papel de 80 mm. Si el formato
-tiene un nombre propio, copia ese nombre en `THERMAL_PAPER_SIZE`, reinicia el
-agent y vuelve a probar.
+Cancela primero cualquier trabajo PDF antiguo que permanezca en `Impresión` o
+`Error` dentro de la cola. Confirma que la térmica sea la predeterminada y que su
+página de prueba funcione. La versión RAW informa como error si Windows deja el
+nuevo trabajo bloqueado durante más de 15 segundos.
 
 ### Otro PC provoca la desconexión
 

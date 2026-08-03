@@ -15,6 +15,8 @@ compilado y los siguientes asistentes:
   usuario actual.
 - `INSTALAR-INICIO-AUTOMATICO.ps1`: crea el acceso directo utilizado por el
   asistente de inicio automático.
+- `windows-print-raw.ps1`: envía el ticket térmico mediante el spooler RAW de
+  Windows y comprueba el estado del trabajo.
 - `INSTALL.md`: explica la instalación, configuración, inicio automático y
   resolución de problemas.
 

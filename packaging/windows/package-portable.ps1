@@ -18,7 +18,8 @@ $RequiredPaths = @(
   (Join-Path $RepositoryRoot "dist"),
   (Join-Path $RepositoryRoot "node_modules"),
   (Join-Path $RepositoryRoot ".env.example"),
-  (Join-Path $RepositoryRoot "INSTALL.md")
+  (Join-Path $RepositoryRoot "INSTALL.md"),
+  (Join-Path $RepositoryRoot "windows-print-raw.ps1")
 )
 
 foreach ($RequiredPath in $RequiredPaths) {
@@ -49,6 +50,7 @@ Copy-Item (Join-Path $RepositoryRoot "INSTALL.md") $PackageRoot
 Copy-Item (Join-Path $RepositoryRoot "README.md") $PackageRoot
 Copy-Item (Join-Path $RepositoryRoot "package.json") $PackageRoot
 Copy-Item (Join-Path $RepositoryRoot "package-lock.json") $PackageRoot
+Copy-Item (Join-Path $RepositoryRoot "windows-print-raw.ps1") $PackageRoot
 Copy-Item (Join-Path $PSScriptRoot "CONFIGURAR-AGENT.cmd") $PackageRoot
 Copy-Item (Join-Path $PSScriptRoot "INICIAR-AGENT.cmd") $PackageRoot
 Copy-Item (Join-Path $PSScriptRoot "INSTALAR-INICIO-AUTOMATICO.cmd") $PackageRoot
@@ -65,6 +67,7 @@ $PackagedPaths = @(
   (Join-Path $PackageRoot ".env.example"),
   (Join-Path $PackageRoot "CONFIGURAR-AGENT.cmd"),
   (Join-Path $PackageRoot "INICIAR-AGENT.cmd"),
+  (Join-Path $PackageRoot "windows-print-raw.ps1"),
   (Join-Path $PackageRoot "INSTALAR-INICIO-AUTOMATICO.cmd"),
   (Join-Path $PackageRoot "INSTALAR-INICIO-AUTOMATICO.ps1"),
   (Join-Path $PackageRoot "INSTALL.md")
