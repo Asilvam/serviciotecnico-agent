@@ -78,7 +78,9 @@ export function buildWindowsRawTicket(
     Buffer.from([0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30]),
     Buffer.from(`\nEstado actual: ${status}\n\n\n`, 'ascii'),
     Buffer.from([0x1b, 0x61, 0x00]),
-    Buffer.from([0x1d, 0x56, 0x00]),
+    // Advance the last printed line to the cutter before cutting. Immediate
+    // cutting can leave the ticket footer attached to the next receipt.
+    Buffer.from([0x1d, 0x56, 0x41, 0x00]),
   ]);
 }
 
